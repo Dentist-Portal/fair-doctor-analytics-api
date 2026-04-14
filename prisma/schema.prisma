@@ -1,0 +1,82 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Location {
+  id             Int             @id @default(autoincrement()) @map("location_id")
+  locationName   String          @unique @map("location_name") @db.VarChar(255)
+  zipcode        String?         @db.VarChar(20)
+  dentalUnits    Int             @default(0) @map("dental_units")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patientMetrics PatientMetric[]
+  fileOperations FileOperation[]
+  dailyMetrics   DailyMetric[]
+
+  @@map("locations")
+}
+
+model PatientMetric {
+  id         BigInt            @id @default(autoincrement()) @map("patient_metric_id")
+  locationId Int               @map("location_id")
+  metricDate DateTime          @map("metric_date") @db.Date
+  metricType PatientMetricType @map("metric_type")
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  location   Location          @relation(fields: [locationId], references: [id])
+
+  @@map("patient_metrics")
+}
+
+model FileOperation {
+  id         BigInt    @id @default(autoincrement()) @map("file_id")
+  locationId Int       @map("location_id")
+  fileType   FileType  @map("file_type")
+  fileDate   DateTime? @map("file_date") @db.Date
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  location   Location  @relation(fields: [locationId], references: [id])
+
+  @@map("file_operations")
+}
+
+model KpiType {
+  id           Int           @id @default(autoincrement()) @map("kpi_type_id")
+  kpiName      String        @unique @map("kpi_name") @db.VarChar(100)
+  description  String?
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  dailyMetrics DailyMetric[]
+
+  @@map("kpi_types")
+}
+
+model DailyMetric {
+  id          BigInt   @id @default(autoincrement()) @map("metric_id")
+  locationId  Int      @map("location_id")
+  metricDate  DateTime @map("metric_date") @db.Date
+  kpiTypeId   Int      @map("kpi_type_id")
+  metricValue Decimal? @map("metric_value") @db.Decimal(15, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  kpiType     KpiType  @relation(fields: [kpiTypeId], references: [id])
+  location    Location @relation(fields: [locationId], references: [id])
+
+  @@map("daily_metrics")
+}
+
+enum PatientMetricType {
+  missing_document
+  ohne_leistung
+}
+
+enum FileType {
+  mvz_karten_fehlen
+  karten_ohne_leistung
+}

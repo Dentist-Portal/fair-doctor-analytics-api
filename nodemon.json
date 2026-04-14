@@ -1,0 +1,8 @@
+{
+    "watch": ["src","src/modules", "src/modules/kpi   "],
+    "ignore": ["src/**/*.spec.ts"],
+    "ext": "ts,html,ejs,css,json",
+    "exec": "tsx ./src/app.ts",
+    "legacyWatch": true,
+    "delay": "500"
+}

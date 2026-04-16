@@ -1,5 +1,9 @@
-import express, { type Request, type Response } from 'express';
-import { getFoxiChartLastWorkingDay, getLast13WeekData, lastWorkingDay } from './kpi.controller';
+import express from "express";
+import {
+  getFoxiChartLastWorkingDay,
+  getLast13WeekData,
+  lastWorkingDay,
+} from "./kpi.controller";
 
 const router = express.Router();
 

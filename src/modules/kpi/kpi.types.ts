@@ -1,5 +1,5 @@
 export interface KpiWeekEntry {
-  week: string; // e.g. '2025-01-06 to 2025-01-12'
+  week: string;
   weekStart: Date;
   weekEnd: Date;
   kpis: {
@@ -33,8 +33,8 @@ export interface LastWorkingDayResponse {
 }
 
 export interface FoxiChartResponse {
-  success             : boolean
-  date                : string
-  currentPercentage   : number
-  remainingPercentage : number
+  success: boolean;
+  date: string;
+  currentPercentage: number;
+  remainingPercentage: number;
 }

@@ -1,4 +1,4 @@
-import { FileType, PatientMetricType } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import prisma from "../../config/prisma";
 import type {
   FoxiChartResponse,
@@ -13,104 +13,128 @@ import {
   getLastWorkingDay,
 } from "../../utils/helper";
 
+type WeekMetricTotals = Record<keyof KpiWeekEntry["kpis"], number>;
+type TrendKpiName = keyof WeekMetricTotals;
+type TrendDailyMetric = Prisma.DailyMetricGetPayload<{
+  select: {
+    metricDate: true;
+    metricValue: true;
+    createdAt: true;
+    locationId: true;
+    kpiType: {
+      select: {
+        kpiName: true;
+      };
+    };
+  };
+}>;
+
+const normalizeDate = (date: Date) => {
+  const normalizedDate = new Date(date);
+  normalizedDate.setHours(0, 0, 0, 0);
+  return normalizedDate;
+};
+
+const createEmptyWeekTotals = (): WeekMetricTotals => ({
+  MVZ_karten_ohne_Leistung: 0,
+  MVZ_Karten_Fehlen: 0,
+  Fehlende_Doku: 0,
+  ohne_Leistung: 0,
+});
+
+const TREND_KPI_NAME_MAP: Record<string, TrendKpiName> = {
+  ohne_Leistung: "ohne_Leistung",
+  Fehlende_Doku: "Fehlende_Doku",
+  MVZ_Karten_Fehlen: "MVZ_Karten_Fehlen",
+  MVZ_karten_ohne_Leistung: "MVZ_karten_ohne_Leistung",
+};
+
 export const getLast13WeekKPI = async (
   locationId?: number | null,
 ): Promise<KpiResponse> => {
   const weeks = buildWeekRanges();
+  const weekBuckets = weeks.map((week) => ({
+    ...week,
+    kpis: createEmptyWeekTotals(),
+  }));
 
-  // const fullRangeStart = weeks[0].weekStart;
-  // const today = weeks[12].weekEnd;
+  if (weekBuckets.length === 0) {
+    return {
+      success: true,
+      totalWeeks: 13,
+      locationId: locationId ?? null,
+      data: [],
+    };
+  }
 
-  const patientMetrics = await prisma.patientMetric.findMany({
+  const firstWeekStart = weekBuckets[0]!.weekStart;
+  const lastWeekEnd = weekBuckets[weekBuckets.length - 1]!.weekEnd;
+
+  const dailyMetrics: TrendDailyMetric[] = await prisma.dailyMetric.findMany({
     where: {
-      // metricDate: {
-      //   gte: fullRangeStart,
-      //   lte: today,
-      // },
-      metricType: {
-        in: ["missing_document", "ohne_leistung"],
+      metricDate: {
+        gte: firstWeekStart,
+        lte: lastWeekEnd,
       },
       ...(locationId ? { locationId } : {}),
+      kpiType: {
+        kpiName: {
+          in: Object.keys(TREND_KPI_NAME_MAP),
+        },
+      },
     },
     select: {
       metricDate: true,
-      metricType: true,
+      metricValue: true,
+      createdAt: true,
       locationId: true,
-    },
-  });
-
-  console.log(patientMetrics.length);
-
-  const fileOperations = await prisma.fileOperation.findMany({
-    where: {
-      // fileDate: {
-      //   gte: fullRangeStart,
-      //   lte: today,
-      // },
-      fileType: {
-        in: ["mvz_karten_fehlen", "karten_ohne_leistung"],
+      kpiType: {
+        select: {
+          kpiName: true,
+        },
       },
-      ...(locationId ? { locationId } : {}),
-    },
-    select: {
-      fileDate: true,
-      fileType: true,
-      locationId: true,
     },
   });
 
-  const data: KpiWeekEntry[] = weeks.map((week) => {
-    const missignPatientMetrics = patientMetrics.filter(
-      (p) =>
-        p.metricType === PatientMetricType.missing_document &&
-        p.metricDate >= week.weekStart &&
-        p.metricDate <= week.weekEnd,
-    ).length;
+  const getWeekBucket = (date: Date) =>
+    weekBuckets.find((week) => date >= week.weekStart && date <= week.weekEnd);
+  const latestDailyMetricMap = new Map<string, TrendDailyMetric>();
 
-    const ohneLeistungMetrics = patientMetrics.filter((p) => {
-      const metricDate = new Date(p.metricDate);
-      metricDate.setHours(0, 0, 0, 0);
-      return (
-        p.metricType === PatientMetricType.ohne_leistung &&
-        metricDate >= week.weekStart &&
-        metricDate <= week.weekEnd
-      );
-    }).length;
+  for (const metric of dailyMetrics) {
+    const metricDate = normalizeDate(metric.metricDate);
+    const dedupeKey = [
+      metric.locationId,
+      metric.kpiType.kpiName,
+      metricDate.toISOString(),
+    ].join(":");
+    const existingMetric = latestDailyMetricMap.get(dedupeKey);
 
-    const mvzKartenFehlenFiles = fileOperations.filter(
-      (f) =>
-        f.fileType === FileType.karten_ohne_leistung &&
-        f.fileDate &&
-        f.fileDate >= week.weekStart &&
-        f.fileDate <= week.weekEnd,
-    ).length;
+    if (!existingMetric || metric.createdAt > existingMetric.createdAt) {
+      latestDailyMetricMap.set(dedupeKey, metric);
+    }
+  }
 
-    const mvzKartenOhneLeistung = fileOperations.filter(
-      (f) =>
-        f.fileType === FileType.mvz_karten_fehlen &&
-        f.fileDate &&
-        f.fileDate >= week.weekStart &&
-        f.fileDate <= week.weekEnd,
-    ).length;
+  for (const metric of latestDailyMetricMap.values()) {
+    const kpiName = TREND_KPI_NAME_MAP[metric.kpiType.kpiName];
 
-    return {
-      week: week.week,
-      weekStart: week.weekStart,
-      weekEnd: week.weekEnd,
-      kpis: {
-        MVZ_karten_ohne_Leistung: mvzKartenOhneLeistung,
-        MVZ_Karten_Fehlen: mvzKartenFehlenFiles,
-        Fehlende_Doku: missignPatientMetrics,
-        ohne_Leistung: ohneLeistungMetrics,
-      },
-    };
-  });
+    if (!kpiName) {
+      continue;
+    }
+
+    const weekBucket = getWeekBucket(normalizeDate(metric.metricDate));
+
+    if (!weekBucket) {
+      continue;
+    }
+
+    weekBucket.kpis[kpiName] += Number(metric.metricValue ?? 0);
+  }
 
   return {
     success: true,
     totalWeeks: 13,
     locationId: locationId ?? null,
-    data: data,
+    data: weekBuckets,
   };
 };
 
@@ -159,10 +183,10 @@ export const lastWorkingDayKPI = async (
     Fehlende_Doku: 0,
   };
 
-  for (const items of data) {
-    const key = items.kpiType.kpiName as keyof LastWorkingDayKpis;
-    if (kpiMap[key] == 0) {
-      kpiMap[key] = Number(items.metricValue ?? 0);
+  for (const item of data) {
+    const key = item.kpiType.kpiName as keyof LastWorkingDayKpis;
+    if (kpiMap[key] === 0) {
+      kpiMap[key] = Number(item.metricValue ?? 0);
     }
   }
 
@@ -171,7 +195,7 @@ export const lastWorkingDayKPI = async (
   return {
     success: true,
     date: date || "",
-    locationId: locationId,
+    locationId,
     kpis: kpiMap,
   };
 };
@@ -193,14 +217,13 @@ export const foxiChartLastWorkingDay = async (
     },
   });
   const record = records[0];
-  console.log(record);
-  const currentPercentage: number = Number(record?.metricValue) || 0;
-  const remainingPercentage: number = 100 - currentPercentage;
+  const currentPercentage = Number(record?.metricValue) || 0;
+  const remainingPercentage = 100 - currentPercentage;
 
   return {
     success: true,
     date: formatDate(lastWorkingDate) || "",
-    currentPercentage: currentPercentage,
-    remainingPercentage: remainingPercentage,
+    currentPercentage,
+    remainingPercentage,
   };
 };

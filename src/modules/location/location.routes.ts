@@ -1,7 +1,7 @@
 import express from "express";
 import { getAllLocations } from "./location.controller";
-const Router = express.Router();
+const router = express.Router();
 
-Router.get("/", getAllLocations);
+router.get("/", getAllLocations);
 
-export default Router;
+export default router;

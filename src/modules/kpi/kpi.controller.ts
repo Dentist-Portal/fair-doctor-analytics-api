@@ -4,8 +4,27 @@ import {
   getLast13WeekKPI,
   lastWorkingDayKPI,
 } from "./kpi.service";
-import { Prisma } from "@prisma/client";
 import { PrismaError } from "../../middleware/errorhanlder";
+
+function parseLocationId(value: unknown, required: true): number;
+function parseLocationId(value: unknown, required?: false): number | null;
+function parseLocationId(value: unknown, required = false): number | null {
+  if (value === undefined || value === null || value === "") {
+    if (required) {
+      throw new PrismaError("locationId query parameter is required", 400);
+    }
+
+    return null;
+  }
+
+  const parsedValue = Number(value);
+
+  if (!Number.isInteger(parsedValue) || parsedValue <= 0) {
+    throw new PrismaError("locationId must be a positive integer", 400);
+  }
+
+  return parsedValue;
+}
 
 export const getLast13WeekData = async (
   req: Request,
@@ -13,22 +32,11 @@ export const getLast13WeekData = async (
   next: NextFunction,
 ) => {
   try {
-    let locationId = req.query.locationId ? Number(req.query.locationId) : null;
+    const locationId = parseLocationId(req.query.locationId);
     const data = await getLast13WeekKPI(locationId);
 
-    return res.status(200).json({
-      success: true,
-      totalWeeks: 13,
-      locationId: locationId,
-      data: data,
-    });
+    return res.status(200).json(data);
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2025") {
-        next(new PrismaError("Record not found", 404));
-        return;
-      }
-    }
     next(error);
   }
 };
@@ -39,27 +47,12 @@ export const lastWorkingDay = async (
   next: NextFunction,
 ) => {
   try {
-    const locationId = req.query.locationId
-      ? Number(req.query.locationId)
-      : null;
-
-    if (locationId === null) return next(new Error("Internal Server error"));
+    const locationId = parseLocationId(req.query.locationId, true);
 
     const data = await lastWorkingDayKPI(locationId);
 
-    return res.status(200).json({
-      success: true,
-      date: data.date,
-      locationId: data.locationId,
-      kpis: data.kpis,
-    });
+    return res.status(200).json(data);
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2025") {
-        next(new PrismaError("Record not found", 404));
-        return;
-      }
-    }
     next(error);
   }
 };
@@ -70,25 +63,11 @@ export const getFoxiChartLastWorkingDay = async (
   next: NextFunction,
 ) => {
   try {
-    const locationId = req.query.locationId
-      ? Number(req.query.locationId)
-      : null;
-    if (locationId === null) return next(new Error("Internal Server Error"));
+    const locationId = parseLocationId(req.query.locationId, true);
     const data = await foxiChartLastWorkingDay(locationId);
 
-    return res.status(200).json({
-      success: true,
-      date: data.date,
-      currentPercentage: data.currentPercentage,
-      remainingPercentage: data.remainingPercentage,
-    });
+    return res.status(200).json(data);
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2025") {
-        next(new PrismaError("Record not found", 404));
-        return;
-      }
-    }
     next(error);
   }
 };

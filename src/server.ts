@@ -1,5 +1,8 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
+import kpiRoutes from "./modules/kpi/kpi.routes";
+import locationRoutes from "./modules/location/location.routes";
+import { errorHandler } from "./middleware/errorhanlder";
 
 const app = express();
 const corsOrigin = process.env.FRONTEND_URL?.trim();
@@ -23,5 +26,10 @@ app.use(
 app.get("/", (_req: Request, res: Response) => {
   res.send("Server is running fine");
 });
+
+app.use("/api/locations", locationRoutes);
+app.use("/api", kpiRoutes);
+
+app.use(errorHandler);
 
 export default app;
